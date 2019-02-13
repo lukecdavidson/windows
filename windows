@@ -1,4 +1,4 @@
-#!/bin/zsh
+#! /usr/bin/zsh
 
 [[ "$EUID" -ne 0 ]] && echo "Please run as root" && exit 1
 
