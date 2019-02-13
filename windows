@@ -1,0 +1,201 @@
+#!/bin/zsh
+
+[[ "$EUID" -ne 0 ]] && echo "Please run as root" && exit 1
+
+#win_image=/dev/vg1/windows
+#win10pro_iso=/home/luke/Qemu/Windows/Win10_1803_English_x64_Custom.iso
+#virtio_iso=/home/luke/Qemu/Windows/virtio-win-0.1.141.iso
+
+export QEMU_AUDIO_DRV=pa
+export QEMU_PA_SERVER=/run/user/1000/pulse/native
+export PULSE_COOKIE=/home/luke/.config/pulse/cookie
+export QEMU_AUDIO_TIMER_PERIOD=500
+
+OPTS="-runas luke"
+OPTS="$OPTS -name windows,process=windows"
+OPTS="$OPTS -machine type=pc-q35-3.0,accel=kvm,smm=on"
+OPTS="$OPTS -global driver=cfi.pflash01,property=secure,value=on"
+OPTS="$OPTS -global ICH9-LPC.disable_s3=1"
+OPTS="$OPTS -global ICH9-LPC.disable_s4=1"
+OPTS="$OPTS -cpu host,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time"
+OPTS="$OPTS -smp 6,sockets=1,cores=6"
+OPTS="$OPTS -m 12G"
+OPTS="$OPTS -mem-path /dev/hugepages"
+OPTS="$OPTS -mem-prealloc"
+OPTS="$OPTS -rtc clock=host,base=localtime"
+OPTS="$OPTS -device ich9-intel-hda -device hda-output"
+OPTS="$OPTS -k en-us"
+OPTS="$OPTS -device pcie-root-port,bus=pcie.0,addr=1c.0,multifunction=on,port=1,chassis=1,id=root.1"
+OPTS="$OPTS -drive if=pflash,format=raw,readonly,file=/usr/share/ovmf/x64/OVMF_CODE.fd"
+OPTS="$OPTS -drive if=pflash,format=raw,file=/tmp/MY_VARS.fd"
+OPTS="$OPTS -boot menu=on"
+OPTS="$OPTS -boot order=d"
+OPTS="$OPTS -device virtio-scsi-pci,id=scsi"
+OPTS="$OPTS -device scsi-hd,drive=hd"
+
+
+## Experimenting between using native or threads for aio
+## Threads seems to have random key presses but native makes the whole system slower
+## Hoping to use a hardware kvm switch for keyboard and mouse along with native aio
+## Only enable one of these options at a time
+
+OPTS="$OPTS -drive if=none,id=hd,cache=none,format=raw,file=/dev/vg1/windows,aio=native,cache.direct=on"
+#OPTS="$OPTS -drive if=none,id=hd,cache=none,format=raw,file=/dev/vg1/windows,aio=threads"
+
+
+## This adds a virtual file system share with the guest. However, Windows doesn't have virt9p support at the moment
+## Leave disabled for now
+#OPTS="$OPTS -virtfs local,id=share,path=/home/luke/Kronos,security_model=passthrough,writeout=writeout,mount_tag=kronos"
+
+
+## VirtIORNG device to increase entropy to guest
+OPTS="$OPTS -device virtio-rng-pci,max-bytes=1024,period=1000"
+
+
+## Setup Drives
+OPTS="$OPTS -drive if=ide,file=/home/luke/Qemu/Windows/Win10_1803_English_x64_Custom.iso,index=1,media=cdrom"
+OPTS="$OPTS -drive if=ide,file=/home/luke/Qemu/Windows/virtio-win-0.1.141.iso,index=2,media=cdrom"
+
+
+## Networking
+OPTS="$OPTS -netdev bridge,id=hostnet0,br=br0"
+OPTS="$OPTS -device virtio-net-pci,netdev=hostnet0"
+OPTS="$OPTS -device pci-bridge,addr=12.0,chassis_nr=2,id=head.2"
+
+
+## PCI - USB 3.0 Controller Passthrough
+OPTS="$OPTS -device vfio-pci,host=02:00.0,bus=root.1,addr=00.2"
+
+
+## Monitor
+#OPTS="$OPTS -monitor telnet:127.0.0.1:7100,server,nowait"
+OPTS="$OPTS -monitor unix:/tmp/windows.sock,server,nowait"
+
+## GPU Passthrough
+GPU="-device vfio-pci,host=05:00.0,bus=root.1,addr=00.0,x-pci-sub-device-id=0x0519,x-pci-sub-vendor-id=0x1043,multifunction=on"
+GPU="$GPU -device vfio-pci,host=05:00.1,bus=root.1,addr=00.1"
+GPU="$GPU -vga none"
+GPU="$GPU -nographic"
+
+
+## Graphics options used for update sub-command
+UPDT="-device qxl,bus=pcie.0,addr=1c.4,id=video.2"
+UPDT="$UPDT -vga qxl"
+#UPDT="$UPDT -spice port=5901,addr=127.0.0.1,disable-ticketing"
+
+## Main
+ProgName=$(basename $0)
+  
+sub_help(){
+    echo "Usage: $ProgName <subcommand>\n"
+    echo "Subcommands:"
+    echo "    start     Start the virtual machine"
+    echo "    update    Start with no GPU Passthrough. Useful for Windows 10 updates"
+    echo ""
+    echo "For help with each subcommand run:"
+    echo "$ProgName <subcommand> -h|--help"
+    echo ""
+}
+
+sub_baz(){
+    echo "Running 'baz' command."
+    echo "First arg is '$1'."
+    echo "Second arg is '$2'."
+}
+
+sub_start(){
+	echo "Staring Windows 10 Pro"
+	
+	echo "0000:02:00.0" > /sys/bus/pci/devices/0000:02:00.0/driver/unbind
+	echo 0x1912 0x0014 > /sys/bus/pci/drivers/vfio-pci/new_id	
+
+	if ps -A | grep -q windows-vm;
+	then
+    		echo "windows-vm is already running." &
+    		exit 1
+	else
+    		cp /usr/share/ovmf/x64/OVMF_VARS.fd /tmp/MY_VARS.fd
+    		chown luke:kvm /tmp/MY_VARS.fd   
+    		/usr/bin/qemu-system-x86_64 ${=OPTS} ${=GPU} > /dev/null &!
+	fi
+}
+
+sub_stop(){
+	/bin/sh -c '/usr/bin/echo system_powerdown | /usr/bin/socat - UNIX-CONNECT:/tmp/%i.sock; while ps ax | grep "/usr/bin/qemu-system-x86_64 -name %i" | grep -vq grep; do sleep 1; done'
+}
+
+sub_enablegpu(){
+	/usr/bin/sshpass -p $WINPASS ssh kronos "enablegpu.bat.lnk"
+}
+
+sub_update(){
+	echo "Staring Windows 10 Pro"
+	echo "GPU Passthrough disabled"
+
+	echo "0000:02:00.0" > /sys/bus/pci/devices/0000:02:00.0/driver/unbind
+	echo 0x1912 0x0014 > /sys/bus/pci/drivers/vfio-pci/new_id
+
+	if ps -A | grep -q windows-vm;
+	then
+    		echo "windows-vm is already running." &
+    		exit 1
+	else
+    		cp /usr/share/ovmf/x64/OVMF_VARS.fd /tmp/MY_VARS.fd
+    		chown luke:kvm /tmp/MY_VARS.fd   
+    		/usr/bin/qemu-system-x86_64 ${=OPTS} ${=UPDT} > /dev/null &!
+	fi
+}
+
+sub_unbind(){
+	if ps -A | grep -q windows-vm;
+        then
+                echo "Windows 10 Pro is running. Please shutdown guest before unbinding device" &
+                exit 1
+        else
+                echo "0000:02:00.0" > /sys/bus/pci/devices/0000:02:00.0/driver/unbind
+	        echo 1 > /sys/bus/pci/rescan
+        fi
+}
+
+sub_running(){
+	if ps -A | grep -q windows-vm;
+        then
+                echo "Windows 10 Pro is running."
+                exit 0
+        else
+		echo "Windows 10 Pro is NOT running."
+		exit 0
+	fi
+}
+
+sub_check-iommu(){
+	for d in /sys/kernel/iommu_groups/*/devices/*; do 
+    		n=${d#*/iommu_groups/*}; n=${n%%/*}
+    		printf 'IOMMU Group %s ' "$n"
+    		lspci -nns "${d##*/}"
+	done;
+}
+
+sub_check-reset(){
+	for iommu_group in $(find /sys/kernel/iommu_groups/ -maxdepth 1 -mindepth 1 -type d);
+	do echo "IOMMU group $(basename "$iommu_group")"; 
+	for device in $(\ls -1 "$iommu_group"/devices/); 
+	do if [[ -e "$iommu_group"/devices/"$device"/reset ]]; 
+	then echo -n "[RESET]"; fi; echo -n $'\t';lspci -nns "$device"; done; done
+}
+
+subcommand=$1
+case $subcommand in
+    "" | "-h" | "--help")
+        sub_help
+        ;;
+    *)
+        shift
+        sub_${subcommand} $@
+        if [ $? = 127 ]; then
+            echo "Error: '$subcommand' is not a known subcommand." >&2
+            echo "       Run '$ProgName --help' for a list of known subcommands." >&2
+            exit 1
+        fi
+        ;;
+esac
