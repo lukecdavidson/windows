@@ -25,7 +25,8 @@ OPTS="$OPTS -mem-prealloc"
 OPTS="$OPTS -rtc clock=host,base=localtime"
 OPTS="$OPTS -device ich9-intel-hda -device hda-output"
 OPTS="$OPTS -k en-us"
-OPTS="$OPTS -device pcie-root-port,bus=pcie.0,addr=1c.0,multifunction=on,port=1,chassis=1,id=root.1"
+# Changed to allow PCIe devices to be plugged into the bus instead of the PCIe root
+OPTS="$OPTS -device ioh3420,id=root_port1,chassis=0,slot=0,bus=pcie.0"
 OPTS="$OPTS -drive if=pflash,format=raw,readonly,file=/usr/share/ovmf/x64/OVMF_CODE.fd"
 OPTS="$OPTS -drive if=pflash,format=raw,file=/tmp/MY_VARS.fd"
 OPTS="$OPTS -boot menu=on"
@@ -34,56 +35,59 @@ OPTS="$OPTS -device virtio-scsi-pci,id=scsi"
 OPTS="$OPTS -device scsi-hd,drive=hd"
 
 
-## Experimenting between using native or threads for aio
-## Threads seems to have random key presses but native makes the whole system slower
-## Hoping to use a hardware kvm switch for keyboard and mouse along with native aio
-## Only enable one of these options at a time
+# Experimenting between using native or threads for aio
+# Threads seems to have random key presses but native makes the whole system slower
+# Hoping to use a hardware kvm switch for keyboard and mouse along with native aio
+# Only enable one of these options at a time
 
 OPTS="$OPTS -drive if=none,id=hd,cache=none,format=raw,file=/dev/vg1/windows,aio=native,cache.direct=on"
 #OPTS="$OPTS -drive if=none,id=hd,cache=none,format=raw,file=/dev/vg1/windows,aio=threads"
 
 
-## This adds a virtual file system share with the guest. However, Windows doesn't have virt9p support at the moment
-## Leave disabled for now
+# This adds a virtual file system share with the guest. However, Windows doesn't have virt9p support at the moment
+# Leave disabled for now
 #OPTS="$OPTS -virtfs local,id=share,path=/home/luke/Kronos,security_model=passthrough,writeout=writeout,mount_tag=kronos"
 
 
-## VirtIORNG device to increase entropy to guest
+# VirtIORNG device to increase entropy to guest
 OPTS="$OPTS -device virtio-rng-pci,max-bytes=1024,period=1000"
 
 
-## Setup Drives
+# Setup Drives
 OPTS="$OPTS -drive if=ide,file=/home/luke/Qemu/Windows/Win10_1803_English_x64_Custom.iso,index=1,media=cdrom"
 OPTS="$OPTS -drive if=ide,file=/home/luke/Qemu/Windows/virtio-win-0.1.141.iso,index=2,media=cdrom"
 
 
-## Networking
+# Networking
 OPTS="$OPTS -netdev bridge,id=hostnet0,br=br0"
 OPTS="$OPTS -device virtio-net-pci,netdev=hostnet0"
 OPTS="$OPTS -device pci-bridge,addr=12.0,chassis_nr=2,id=head.2"
 
 
-## PCI - USB 3.0 Controller Passthrough
-OPTS="$OPTS -device vfio-pci,host=02:00.0,bus=root.1,addr=00.2"
+# PCI - USB 3.0 Controller Passthrough
+# Connected to KM Switch
+OPTS="$OPTS -device ioh3420,id=root_port2,chassis=0,slot=1,bus=pcie.0"
+OPTS="$OPTS -device vfio-pci,host=02:00.0,id=hostdev3,bus=root_port2,addr=0x00"
 
 
-## Monitor
+# Monitor
 #OPTS="$OPTS -monitor telnet:127.0.0.1:7100,server,nowait"
 OPTS="$OPTS -monitor unix:/tmp/windows.sock,server,nowait"
 
-## GPU Passthrough
-GPU="-device vfio-pci,host=05:00.0,bus=root.1,addr=00.0,x-pci-sub-device-id=0x0519,x-pci-sub-vendor-id=0x1043,multifunction=on"
-GPU="$GPU -device vfio-pci,host=05:00.1,bus=root.1,addr=00.1"
+# GPU Passthrough
+# I also want to try appending rombar=0 to the line below
+GPU="-device vfio-pci,host=05:00.0,id=hostdev1,bus=root_port1,addr=0x00,multifunction=on,romfile=/home/luke/Qemu/Windows/RX580.rom"
+GPU="$GPU -device vfio-pci,host=05:00.1,id=hostdev2,bus=root_port1,addr=0x00.1"
 GPU="$GPU -vga none"
 GPU="$GPU -nographic"
 
 
-## Graphics options used for update sub-command
+# Graphics options used for update sub-command
 UPDT="-device qxl,bus=pcie.0,addr=1c.4,id=video.2"
 UPDT="$UPDT -vga qxl"
 #UPDT="$UPDT -spice port=5901,addr=127.0.0.1,disable-ticketing"
 
-## Main
+# Main
 ProgName=$(basename $0)
   
 sub_help(){
