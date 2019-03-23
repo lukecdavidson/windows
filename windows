@@ -13,16 +13,21 @@ export QEMU_AUDIO_TIMER_PERIOD=500
 
 OPTS="-runas luke"
 OPTS="$OPTS -name windows,process=windows"
-OPTS="$OPTS -machine type=pc-q35-3.0,accel=kvm,smm=on"
+OPTS="$OPTS -machine type=pc-q35-3.1,accel=kvm,smm=on"
 OPTS="$OPTS -global driver=cfi.pflash01,property=secure,value=on"
 OPTS="$OPTS -global ICH9-LPC.disable_s3=1"
 OPTS="$OPTS -global ICH9-LPC.disable_s4=1"
-OPTS="$OPTS -cpu host,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time"
-OPTS="$OPTS -smp 8,sockets=1,cores=8"
+OPTS="$OPTS -no-user-config"
+OPTS="$OPTS -nodefaults"
+OPTS="$OPTS -cpu host,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,+hypervisor,migratable=no,+invtsc"
+OPTS="$OPTS -smp 7,sockets=1,cores=7"
+OPTS="$OPTS -realtime mlock=on"
 OPTS="$OPTS -m 12G"
 OPTS="$OPTS -mem-path /dev/hugepages"
 OPTS="$OPTS -mem-prealloc"
-OPTS="$OPTS -rtc clock=host,base=localtime"
+OPTS="$OPTS -rtc base=localtime,driftfix=slew"
+OPTS="$OPTS -global kvm-pit.lost_tick_policy=discard"
+OPTS="$OPTS -no-hpet"
 OPTS="$OPTS -device ich9-intel-hda -device hda-output"
 OPTS="$OPTS -k en-us"
 # Changed to allow PCIe devices to be plugged into the bus instead of the PCIe root
@@ -42,11 +47,6 @@ OPTS="$OPTS -device scsi-hd,drive=hd"
 
 OPTS="$OPTS -drive if=none,id=hd,cache=none,format=raw,file=/dev/vg1/windows,aio=native,cache.direct=on"
 #OPTS="$OPTS -drive if=none,id=hd,cache=none,format=raw,file=/dev/vg1/windows,aio=threads"
-
-
-# This adds a virtual file system share with the guest. However, Windows doesn't have virt9p support at the moment
-# Leave disabled for now
-#OPTS="$OPTS -virtfs local,id=share,path=/home/luke/Kronos,security_model=passthrough,writeout=writeout,mount_tag=kronos"
 
 
 # VirtIORNG device to increase entropy to guest
@@ -74,9 +74,10 @@ OPTS="$OPTS -device vfio-pci,host=02:00.0,id=hostdev3,bus=root_port2,addr=0x00"
 #OPTS="$OPTS -monitor telnet:127.0.0.1:7100,server,nowait"
 OPTS="$OPTS -monitor unix:/tmp/windows.sock,server,nowait"
 
+
 # GPU Passthrough
 # I also want to try appending rombar=0 to the line below
-GPU="-device vfio-pci,host=05:00.0,id=hostdev1,bus=root_port1,addr=0x00,multifunction=on,romfile=/home/luke/Qemu/Windows/RX580.rom"
+GPU="-device vfio-pci,host=05:00.0,id=hostdev1,bus=root_port1,addr=0x00,multifunction=on,romfile=/home/luke/Qemu/Windows/RX580.rom,rombar=0"
 GPU="$GPU -device vfio-pci,host=05:00.1,id=hostdev2,bus=root_port1,addr=0x00.1"
 GPU="$GPU -vga none"
 GPU="$GPU -nographic"
@@ -125,7 +126,7 @@ sub_start(){
 }
 
 sub_stop(){
-	/bin/sh -c '/usr/bin/echo system_powerdown | /usr/bin/socat - UNIX-CONNECT:/tmp/%i.sock; while ps ax | grep "/usr/bin/qemu-system-x86_64 -name %i" | grep -vq grep; do sleep 1; done'
+	/bin/sh -c '/usr/bin/echo system_powerdown | /usr/bin/socat - UNIX-CONNECT:/tmp/windows.sock; while ps ax | grep "/usr/bin/qemu-system-x86_64 -name windows" | grep -vq grep; do sleep 1; done'
 }
 
 sub_enablegpu(){
