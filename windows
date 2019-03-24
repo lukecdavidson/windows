@@ -35,28 +35,20 @@ OPTS="$OPTS -device ioh3420,id=root_port1,chassis=0,slot=0,bus=pcie.0"
 OPTS="$OPTS -drive if=pflash,format=raw,readonly,file=/usr/share/ovmf/x64/OVMF_CODE.fd"
 OPTS="$OPTS -drive if=pflash,format=raw,file=/tmp/MY_VARS.fd"
 OPTS="$OPTS -boot menu=on"
-OPTS="$OPTS -boot order=d"
+OPTS="$OPTS -boot order=c"
 OPTS="$OPTS -device virtio-scsi-pci,id=scsi"
 OPTS="$OPTS -device scsi-hd,drive=hd"
 
-
-# Experimenting between using native or threads for aio
-# Threads seems to have random key presses but native makes the whole system slower
-# Hoping to use a hardware kvm switch for keyboard and mouse along with native aio
-# Only enable one of these options at a time
-
+# DISKS
+# Main Disk (C:\)
 OPTS="$OPTS -drive if=none,id=hd,cache=none,format=raw,file=/dev/vg1/windows,aio=native,cache.direct=on"
-#OPTS="$OPTS -drive if=none,id=hd,cache=none,format=raw,file=/dev/vg1/windows,aio=threads"
-
-
-# VirtIORNG device to increase entropy to guest
-OPTS="$OPTS -device virtio-rng-pci,max-bytes=1024,period=1000"
-
 
 # Setup Drives
 OPTS="$OPTS -drive if=ide,file=/home/luke/Qemu/Windows/Win10_1803_English_x64_Custom.iso,index=1,media=cdrom"
 OPTS="$OPTS -drive if=ide,file=/home/luke/Qemu/Windows/virtio-win-0.1.141.iso,index=2,media=cdrom"
 
+# VirtIORNG device to increase entropy to guest
+OPTS="$OPTS -device virtio-rng-pci,max-bytes=1024,period=1000"
 
 # Networking
 OPTS="$OPTS -netdev bridge,id=hostnet0,br=br0"
