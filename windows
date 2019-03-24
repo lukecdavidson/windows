@@ -53,13 +53,20 @@ OPTS="$OPTS -device virtio-rng-pci,max-bytes=1024,period=1000"
 # Networking
 OPTS="$OPTS -netdev bridge,id=hostnet0,br=br0"
 OPTS="$OPTS -device virtio-net-pci,netdev=hostnet0"
-OPTS="$OPTS -device pci-bridge,addr=12.0,chassis_nr=2,id=head.2"
+#OPTS="$OPTS -device pci-bridge,addr=12.0,chassis_nr=2,id=head.2"
 
 
 # PCI - USB 3.0 Controller Passthrough
 # Connected to KM Switch
-OPTS="$OPTS -device ioh3420,id=root_port2,chassis=0,slot=1,bus=pcie.0"
-OPTS="$OPTS -device vfio-pci,host=02:00.0,id=hostdev3,bus=root_port2,addr=0x00"
+OPTS="$OPTS -device ioh3420,id=root_port2,chassis=1,slot=1,bus=pcie.0"
+OPTS="$OPTS -device vfio-pci,host=02:00.0,id=hostdev3,bus=root_port2,addr=0x0"
+
+
+OPTS="$OPTS -device ioh3420,id=root_port3,chassis=2,slot=1,bus=pcie.0"
+OPTS="$OPTS -device pcie-pci-bridge,id=pcie-pci-bridge,bus=root_port3,addr=0x0"
+OPTS="$OPTS -object memory-backend-file,id=shmmem-shmem0,mem-path=/dev/shm/looking-glass,size=32M,share=yes"
+OPTS="$OPTS -device ivshmem-plain,id=shmem0,memdev=shmmem-shmem0,bus=pcie-pci-bridge,addr=0x1"
+OPTS="$OPTS -spice port=5900,addr=127.0.0.1,disable-ticketing"
 
 
 # Monitor
