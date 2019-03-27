@@ -2,10 +2,6 @@
 
 [[ "$EUID" -ne 0 ]] && echo "Please run as root" && exit 1
 
-#win_image=/dev/vg1/windows
-#win10pro_iso=/home/luke/Qemu/Windows/Win10_1803_English_x64_Custom.iso
-#virtio_iso=/home/luke/Qemu/Windows/virtio-win-0.1.141.iso
-
 export QEMU_AUDIO_DRV=pa
 export QEMU_PA_SERVER=/run/user/1000/pulse/native
 export PULSE_COOKIE=/home/luke/.config/pulse/cookie
@@ -30,6 +26,7 @@ OPTS="$OPTS -global kvm-pit.lost_tick_policy=discard"
 OPTS="$OPTS -no-hpet"
 OPTS="$OPTS -device ich9-intel-hda -device hda-output"
 OPTS="$OPTS -k en-us"
+
 # Changed to allow PCIe devices to be plugged into the bus instead of the PCIe root
 OPTS="$OPTS -device ioh3420,id=root_port1,chassis=0,slot=0,bus=pcie.0"
 OPTS="$OPTS -drive if=pflash,format=raw,readonly,file=/usr/share/ovmf/x64/OVMF_CODE.fd"
@@ -66,7 +63,7 @@ OPTS="$OPTS -device ioh3420,id=root_port3,chassis=2,slot=1,bus=pcie.0"
 OPTS="$OPTS -device pcie-pci-bridge,id=pcie-pci-bridge,bus=root_port3,addr=0x0"
 OPTS="$OPTS -object memory-backend-file,id=shmmem-shmem0,mem-path=/dev/shm/looking-glass,size=32M,share=yes"
 OPTS="$OPTS -device ivshmem-plain,id=shmem0,memdev=shmmem-shmem0,bus=pcie-pci-bridge,addr=0x1"
-OPTS="$OPTS -spice port=5900,addr=127.0.0.1,disable-ticketing"
+#OPTS="$OPTS -spice port=5900,addr=127.0.0.1,disable-ticketing"
 
 
 # Monitor
@@ -76,7 +73,7 @@ OPTS="$OPTS -monitor unix:/tmp/windows.sock,server,nowait"
 
 # GPU Passthrough
 # I also want to try appending rombar=0 to the line below
-GPU="-device vfio-pci,host=05:00.0,id=hostdev1,bus=root_port1,addr=0x00,multifunction=on,romfile=/home/luke/Qemu/Windows/RX580.rom,rombar=0"
+GPU="-device vfio-pci,host=05:00.0,id=hostdev1,bus=root_port1,addr=0x00,multifunction=on,romfile=/home/luke/Qemu/Windows/RX580.rom"
 GPU="$GPU -device vfio-pci,host=05:00.1,id=hostdev2,bus=root_port1,addr=0x00.1"
 GPU="$GPU -vga none"
 GPU="$GPU -nographic"
